@@ -4,6 +4,6 @@ Collaborative repository for the Housing PCS Dashboard project.
 
 Attributes of interest: Total housing cost vs BAH rate, Schools metrics, Commute metrics, proximity to recreation (restaurants, bars, parks, ect), 
 
-Data sources: data.gov, zillow?, open street map, 
+Data sources: data.gov, zillow?, open street map, tourism sites?
 
 example edit for austin
