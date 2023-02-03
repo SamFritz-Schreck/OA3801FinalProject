@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
+<GroundOverlay>
+	<name>National Walkability Index: Composite</name>
+	<Icon>
+		<href>https://geodata.epa.gov/arcgis/services/OA/WalkabilityIndex/MapServer/KmlServer?Composite=true&amp;LayerIDs=0&amp;BBOX=-122.489883894663,37.71224069345006,-122.385049516684,37.78525273822168;CAMERA=-122.4374553134668,37.74875106566719,6024.15,0,-16.995;VIEW=60,48.874,756,595,1/Composite.png</href>
+	</Icon>
+	<LatLonBox>
+		<north>37.79255256652832</north>
+		<south>37.70494117736816</south>
+		<east>-122.3745643615723</east>
+		<west>-122.500366973877</west>
+	</LatLonBox>
+</GroundOverlay>
+</kml>
