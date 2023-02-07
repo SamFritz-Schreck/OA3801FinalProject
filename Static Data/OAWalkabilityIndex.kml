@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
+<NetworkLink>
+	<name>OA/WalkabilityIndex</name>
+	<open>1</open>
+	<LookAt>
+		<longitude>-86.1305155983854</longitude>
+		<latitude>43.40158581665501</latitude>
+		<altitude>0</altitude>
+		<heading>0</heading>
+		<tilt>0</tilt>
+		<range>2008393.698355865</range>
+	</LookAt>
+	<Region>
+		<LatLonAltBox>
+			<north>90</north>
+			<south>-90</south>
+			<east>180</east>
+			<west>-180</west>
+			<minAltitude>0</minAltitude>
+			<maxAltitude>0</maxAltitude>
+		</LatLonAltBox>
+		<Lod>
+			<minLodPixels>128</minLodPixels>
+			<maxLodPixels>-1</maxLodPixels>
+			<minFadeExtent>0</minFadeExtent>
+			<maxFadeExtent>0</maxFadeExtent>
+		</Lod>
+		<LatLonBox>
+<north>71.4397857060874</north>
+<south>-14.601806016382577</south>
+<east>179.85966572899392</east>
+<west>-179.23110125118885</west>
+</LatLonBox>
+	</Region>
+	<Link>
+		<href>https://geodata.epa.gov/arcgis/rest/services/OA/WalkabilityIndex/MapServer/export?</href>
+		<viewRefreshMode>onStop</viewRefreshMode>
+		<viewRefreshTime>2</viewRefreshTime>
+		<viewFormat>f=kmz&amp;bboxSR=4326&amp;imageSR=4326&amp;format=png24&amp;transparent=true&amp;bbox=[bboxWest],[bboxSouth],[bboxEast],[bboxNorth]&amp;size=[horizPixels],[vertPixels]&amp;</viewFormat>
+	</Link>
+</NetworkLink>
+</kml>
