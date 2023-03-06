@@ -67,14 +67,14 @@ class HousingFoliumMap(param.Parameterized):
             FMR = FMR4 
         return int(FMR)
 
-    def affordability_rating(self,zip_code,dependent_status, rank): 
+    def affordability_rating(self,duty_zip_code,input_zip_code,dependent_status, rank): 
             #BAH Primer Standards for house size (bedroom number) based on rank/dep. status
             if dependent_status == 'W':
                 br_number = self.BAH_W[rank]
             if dependent_status == 'WO':
                 br_number = self.BAH_WO[rank]
-            BAH = self.lookup_bah_rate(zip_code,dependent_status, rank)
-            FMR = self.lookup_fmr(zip_code, br_number)
+            BAH = self.lookup_bah_rate(duty_zip_code,dependent_status, rank)
+            FMR = self.lookup_fmr(input_zip_code, br_number)
             percentage_covered = BAH/FMR
             return percentage_covered
 
@@ -221,7 +221,7 @@ class HousingFoliumMap(param.Parameterized):
             distance.append(point.distance(Point(duty_location[1],duty_location[0])))
         base_df['Distance'] = distance
         rent_df = zip_df.copy()
-        rent_df['Rent Affordability'] = rent_df.Zip_Code.apply(lambda x: self.affordability_rating(int(x),self.dependents,self.grade))
+        rent_df['Rent Affordability'] = rent_df.Zip_Code.apply(lambda x: self.affordability_rating(int(self.duty_zip_code),int(x),self.dependents,self.grade))
         score_df = base_df.copy()
         score_df = base_df.sjoin(crime_df[['geometry','City','Crime Index']], how='left',predicate='within').drop('index_right', axis=1)
         score_df = score_df.sjoin(school_df[['geometry', 'Zip_Code', 'School Rating']], how = 'left', predicate='within').drop('index_right', axis=1)
@@ -323,6 +323,7 @@ class HousingFoliumMap(param.Parameterized):
         self.walk_df, self.crime_df, self.school_df, self.recreation_df,self.zip_df, self.BAH_df, self.FMR_df, self.county_FMR_df = self.create_support_df(self.duty_location)
         
         self.base_df = self.walk_df.drop('Walkability', axis=1)
+        self.duty_zip_code = self.zip_df[self.zip_df.contains(Point(self.longitude,self.latitude))].Zip_Code.iloc[0]
         self.map = self.get_map(self.latitude,self.longitude)
         self.html_pane = pn.pane.HTML(sizing_mode="scale_both", min_height=400)    
         self._update_map()
@@ -332,6 +333,7 @@ class HousingFoliumMap(param.Parameterized):
     def _update_map(self):
         self.map = self.get_map(self.latitude,self.longitude)
         self.duty_location = (self.latitude,self.longitude)
+        self.duty_zip_code = self.zip_df[self.zip_df.contains(Point(self.longitude,self.latitude))].Zip_Code.iloc[0]
         self.score_df, self.rent_df = self.generate_score(self.affordability, self.crime, self.recreation, self.school_quality, self.walkability, 
                                        self.duty_location, self.grade, self.dependents,
                                        self.base_df, self.walk_df, self.crime_df, self.school_df, self.recreation_df,
@@ -370,4 +372,4 @@ dashboard = pn.Tabs(('Inputs',pn.Column(
                                 #self.param.show
                             )),
                     ('Map', app.html_pane))
-dashboard.servable()
+dashboard.show()
