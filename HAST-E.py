@@ -17,26 +17,63 @@ from fiona import drvsupport
 import param
 import panel as pn
 import re
+import branca
 
-class HousingFoliumMap(param.Parameterized):
+class MapGenerator(param.Parameterized):
+    '''
+    This is the supporting object to handle user parameters and generate the map HTML object.
+    '''
     def get_map(self,grid=(38.87194866197945, -77.05625617335261), zoom_start=10):
         return fm.Map(location=grid,zoom_start=zoom_start)
     #map1 = get_map()
     #pn.panel(map1, height=400)
 
     def lookup_bah_rate(self,zip,dependent_status, rank):
-            try:
-                BAH = self.BAH_df[(self.BAH_df.zip_code == str(zip))&(self.BAH_df.dep_status == dependent_status)][rank].values[0] #look up BAH rate by zip code and rank
-            except: 
-                if dependent_status == 'W':
-                    br_number = self.BAH_W[rank]
-                if dependent_status == 'WO':
-                    br_number = self.BAH_WO[rank]
-                FMR = self.lookup_fmr(zip, br_number)
-                BAH = .9*FMR  #If zipcode is not in database, use 90% of FMR based on BAH primer (+/-10%)
-            return BAH 
+        '''
+        
+        Parameters
+        ----------
+        zip : 
+            Reference Zip Code of a duty location.
+        dependent_status : 
+            'W' or 'WO' based on user input.
+        rank : 
+            Based on availble options in 'grade' param object.
+
+        Returns
+        -------
+        BAH : 
+            If BAH available in BAH_df, returns the value
+            Else returns 90% of the Fair Market Rent.
+
+        '''
+        try:
+            BAH = self.BAH_df[(self.BAH_df.zip_code == str(zip))&(self.BAH_df.dep_status == dependent_status)][rank].values[0] #look up BAH rate by zip code and rank
+        except: 
+            if dependent_status == 'W':
+                br_number = self.BAH_W[rank]
+            if dependent_status == 'WO':
+                br_number = self.BAH_WO[rank]
+            FMR = self.lookup_fmr(zip, br_number)
+            BAH = .9*FMR  #If zipcode is not in database, use 90% of FMR based on BAH primer (+/-10%)
+        return BAH 
 
     def lookup_fmr(self,zip_code, br_number):
+        '''
+
+        Parameters
+        ----------
+        zip_code : 
+            Zip Code for a reference location.
+        br_number : 
+            BAH Primer specified standard number of bedrooms based on grade and dependent status.
+
+        Returns
+        -------
+        FMR
+            Fair Market Rent value (40th percentile) for the reference zip code and specified housing standard.
+
+        '''
         FMR_df = self.FMR_df
         county_FMR_df = self.county_FMR_df
         try:
@@ -68,17 +105,63 @@ class HousingFoliumMap(param.Parameterized):
         return int(FMR)
 
     def affordability_rating(self,duty_zip_code,input_zip_code,dependent_status, rank): 
-            #BAH Primer Standards for house size (bedroom number) based on rank/dep. status
-            if dependent_status == 'W':
-                br_number = self.BAH_W[rank]
-            if dependent_status == 'WO':
-                br_number = self.BAH_WO[rank]
-            BAH = self.lookup_bah_rate(duty_zip_code,dependent_status, rank)
-            FMR = self.lookup_fmr(input_zip_code, br_number)
-            percentage_covered = BAH/FMR
-            return percentage_covered
+        '''
 
-    def create_support_df(self,duty_location):
+        Parameters
+        ----------
+        duty_zip_code : 
+            Zip Code of duty location.
+        input_zip_code : 
+            Zip Code of housing area.
+        dependent_status : 
+            'W' or 'WO'.
+        rank : 
+            Based on options from the param selector for grade.
+
+        Returns
+        -------
+        percentage_covered : 
+            Returns percentage the duty BAH covers FMR for a given area.
+            Likely greater than 1 due to the comparison of FMR (40th percentile) and BAH (50th percentile)
+
+        '''
+        if dependent_status == 'W':
+            br_number = self.BAH_W[rank]
+        if dependent_status == 'WO':
+            br_number = self.BAH_WO[rank]
+        BAH = self.lookup_bah_rate(duty_zip_code,dependent_status, rank)
+        FMR = self.lookup_fmr(input_zip_code, br_number)
+        percentage_covered = BAH/FMR
+        return percentage_covered
+
+    def create_support_df(self, duty_location):
+        '''
+        
+
+        Parameters
+        ----------
+        duty_location : Grid coordinate of the duty location.
+
+        Returns
+        -------
+        walk_df : GeoDataFrame
+            The likelihood an individual primarily walks if they live in an area.
+        crime_df_merge : GeoDataFrame
+            The FBI's crime index of incorporated places (cities, towns, ect.).
+        school_df_merge : GeoDataFrame
+            The average GreatSchools rating of a zipcode.
+        recreation_df_nonnull : GeoDataFrame
+            The number of breweries in a zipcode.
+        zip_df : GeoDataFrame
+            The geographies of all zipcodes within MD, VA, and Washington DC.
+        BAH_df : DataFrame
+            Reference BAH rates nationwide.
+        FMR_df : DataFrame
+            Reference FMR rates nationwide.
+        county_FMR_df : DataFrame
+            Reference county FMR rates nationwide.
+
+        '''
         drvsupport.supported_drivers['KML'] = 'rw'
 
         #build walkability dataframe
@@ -129,6 +212,7 @@ class HousingFoliumMap(param.Parameterized):
         grouped_df = schools_df.groupby(by='Zip_Code')['School Rating'].mean()
         grouped_df.index = grouped_df.index.astype(str)
         zip_df = gpd.read_file('./Data/Geographies/DC_MD_VA_Zipcodes.kml', driver='KML')
+        #regex to get zipcode
         def find_zip_code(cell):
             match = re.search(r'<at><openparen>(\d{5})<closeparen>', cell)
             if match:
@@ -214,6 +298,54 @@ class HousingFoliumMap(param.Parameterized):
 
     def generate_score(self,affordability, crime, recreation, schools, walk, duty_location, grade, dependents,
                        base_df, walk_df, crime_df, school_df, recreation_df,zip_df, BAH_df, FMR_df, county_FMR_df):
+        '''
+        Creates score dataframe based on user inputs
+
+        Parameters
+        ----------
+        affordability : TYPE
+            DESCRIPTION.
+        crime : TYPE
+            DESCRIPTION.
+        recreation : TYPE
+            DESCRIPTION.
+        schools : TYPE
+            DESCRIPTION.
+        walk : TYPE
+            DESCRIPTION.
+        duty_location : TYPE
+            DESCRIPTION.
+        grade : TYPE
+            DESCRIPTION.
+        dependents : TYPE
+            DESCRIPTION.
+        base_df : TYPE
+            DESCRIPTION.
+        walk_df : TYPE
+            DESCRIPTION.
+        crime_df : TYPE
+            DESCRIPTION.
+        school_df : TYPE
+            DESCRIPTION.
+        recreation_df : TYPE
+            DESCRIPTION.
+        zip_df : TYPE
+            DESCRIPTION.
+        BAH_df : TYPE
+            DESCRIPTION.
+        FMR_df : TYPE
+            DESCRIPTION.
+        county_FMR_df : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        score_df : GeoDataFrame
+            Contains all metric scores and weighted sum for every census block group (neighborhood) in MD, VA, and Washington DC.
+        rent_df : GeoDataFrame
+            The precentage of coverage BAH/FMR for every zipcode.
+
+        '''
         centers = base_df.to_crs('+proj=cea').centroid.to_crs(base_df.crs)
         distance = list()
         for point in centers:
@@ -236,8 +368,84 @@ class HousingFoliumMap(param.Parameterized):
                                     + affordability*score_df['Rent Affordability']
                                     + recreation*score_df['Brewery Count'])
         return score_df, rent_df
+    
+    def popup_html(self,location):
+        '''
+        Supporting function to generate html for marker popup table
+        '''
+        zipcode = location.Zip_Code
+        distance = round(location['Distance'],2)*60
+        overall_score = round(location['Overall Score'],3)
+        affordability = round(location['Rent Affordability'],2)*100
+        walkability = location.Walkability
+        crime_index = location['Crime Index']                   
+        school_rating = location['School Rating']
+        brewery_count = location['Brewery Count']
+    
+        left_col_color = "#19a7bd"
+        right_col_color = "#f2f0d3"
+        
+        html = """<!DOCTYPE html>
+    <html>
+    <head>
+    <h4 style="margin-bottom:10"; width="200px">{}</h4>""".format(zipcode) + """
+    </head>
+        <table style="height: 126px; width: 350px;">
+    <tbody>
+    <tr>
+    <td style="background-color: """+ left_col_color +""";"><span style="color: #ffffff;">Distance</span></td>
+    <td style="width: 150px;background-color: """+ right_col_color +""";">{}</td>""".format(distance) + """
+    </tr>
+    <tr>
+    <td style="background-color: """+ left_col_color +""";"><span style="color: #ffffff;">Overall Score</span></td>
+    <td style="width: 150px;background-color: """+ right_col_color +""";">{}</td>""".format(overall_score) + """
+    </tr>
+    <tr>
+    <td style="background-color: """+ left_col_color +""";"><span style="color: #ffffff;">Rent Affordability</span></td>
+    <td style="width: 150px;background-color: """+ right_col_color +""";">{}</td>""".format(affordability) + """
+    </tr>
+    <tr>
+    <td style="background-color: """+ left_col_color +""";"><span style="color: #ffffff;">Walkability</span></td>
+    <td style="width: 150px;background-color: """+ right_col_color +""";">{}</td>""".format(walkability) + """
+    </tr>
+    <tr>
+    <td style="background-color: """+ left_col_color +""";"><span style="color: #ffffff;">Crime Index</span></td>
+    <td style="width: 150px;background-color: """+ right_col_color +""";">{}</td>""".format(crime_index) + """
+    </tr>
+    <tr>
+    <td style="background-color: """+ left_col_color +""";"><span style="color: #ffffff;">School Rating</span></td>
+    <td style="width: 150px;background-color: """+ right_col_color +""";">{}</td>""".format(school_rating) + """
+    </tr>
+    <tr>
+    <td style="background-color: """+ left_col_color +""";"><span style="color: #ffffff;">Brewery Count</span></td>
+    <td style="width: 150px;background-color: """+ right_col_color +""";">{}</td>""".format(brewery_count) + """
+    </tr>
+    </tbody>
+    </table>
+    </html>
+    """
+        return html
 
     def add_map_points(self,m, score, points_count, duty_location):
+        '''
+        Adds number of specified markers to the map based on the score dataframe
+
+        Parameters
+        ----------
+        m : folium.map
+            Base map.
+        score : GeoDataFrame
+            Contains all metrics for every census block group.
+        points_count : param.Integer
+            Number of markers to be placed on the map.
+        duty_location : param.XYCoordinate
+            Location of duty.
+
+        Returns
+        -------
+        None.
+
+        '''
         fm.Marker(duty_location, 
               popup = 'Duty Location', 
               icon=fm.Icon(color='gray', prefix='fa', icon='briefcase')).add_to(m)
@@ -256,16 +464,12 @@ class HousingFoliumMap(param.Parameterized):
                 background_color = 'lightgrey',
                 iconShape = 'marker'
             )
+            html = self.popup_html(location)
+            #iframe = branca.element.IFrame(html=html,width=510,height=280)
+            popup = fm.Popup(fm.Html(html, script=True), max_width=500)
             fm.Marker((point.y,point.x), 
                      icon=number_icon,
-                     popup = f'''Zip Code: {location.Zip_Code}
-                     <br>Distance(nm) from duty location: {round(location['Distance'],2)*60}
-                     <br>Overall Score: {round(location['Overall Score'],3)}
-                     <br>Affordability (in % by BAH): {round(location['Rent Affordability'],2)*100}
-                     <br>Walkability: {location['Walkability']}
-                     <br>Crime Index: {location['Crime Index']}
-                     <br>School Rating: {location['School Rating']}
-                     <br>Brewery Count: {location['Brewery Count']}'''
+                     popup = popup
                      ).add_to(m)
             marker_lats.append(point.y)
             marker_longs.append(point.x)
@@ -273,6 +477,23 @@ class HousingFoliumMap(param.Parameterized):
         m.fit_bounds([(min(marker_lats),min(marker_longs)),(max(marker_lats),max(marker_longs))])
 
     def create_choro(self,map, df, name):
+        '''
+        
+
+        Parameters
+        ----------
+        map : folium.map
+            Base map.
+        df : GeoDataframe
+            Contains geography and metric to be displayed.
+        name : str
+            Name of metric to be displayed.
+
+        Returns
+        -------
+        None.
+
+        '''
         choro = fm.FeatureGroup(name, show=False).add_to(map)
         choropleth = fm.Choropleth(df,
                      data=df,
@@ -293,18 +514,19 @@ class HousingFoliumMap(param.Parameterized):
                               'O01E': 2, 'O02E': 2, 'O03E': 3,
                               'O01': 2, 'O02': 2,'O03': 2,'O04': 3,'O05': 3,'O06': 3,'O07': 3,'O08': 3,'O09': 3, 'O010': 3}
     #Source: BAH Primer: https://media.defense.gov/2022/Jun/23/2003023204/-1/-1/0/BAH-PRIMER.PDF
+    
     duty_grid = param.XYCoordinates((38.87194866197945,-77.05625617335261))
-    grade = param.Selector(BAH_WD_standards_dict.keys(), default = 'O04')
-    dependents = param.Selector(['W', 'WO'], default = 'W')
-    walkability = param.Integer(4, bounds=(0,10))
-    crime = param.Integer(8, bounds=(0,10))
-    affordability = param.Integer(10,bounds=(0,10))
-    school_quality = param.Integer(7, bounds=(0,10))
-    recreation = param.Integer(5,bounds=(0,10))
-    points_count = param.Integer(5, bounds=(1,10))
-    distance = param.Integer(8, bounds=(0,10))
-    update_map = param.Action(lambda x: x.param.trigger('update_map'))
-    #show = param.Action()
+    grade = param.Selector(BAH_WD_standards_dict.keys(), default = 'O04', doc='Used in BAH/FMR Calculation')
+    dependents = param.Selector(['W', 'WO'], default = 'W', doc='Used in BAH/FMR Calculation')
+    walkability = param.Integer(4, bounds=(0,10), doc='User defined weight of relative importance')
+    crime = param.Integer(8, bounds=(0,10), doc='User defined weight of relative importance')
+    affordability = param.Integer(10,bounds=(0,10), doc='User defined weight of relative importance')
+    school_quality = param.Integer(7, bounds=(0,10), doc='User defined weight of relative importance')
+    recreation = param.Integer(5,bounds=(0,10), doc='User defined weight of relative importance')
+    points_count = param.Integer(5, bounds=(1,10), doc='Number of markers to place on the map')
+    distance = param.Integer(8, bounds=(0,10), doc='User defined weight of relative importance')
+    update_map = param.Action(lambda x: x.param.trigger('update_map'), doc='Action object tied to GUI button which initiates a map refresh')
+    #show = param.Action() #button to launch server version of app in jupyter notebook
         
     def __init__(self, **params):
         super().__init__(**params)
@@ -329,8 +551,16 @@ class HousingFoliumMap(param.Parameterized):
         self._update_map()
         self.show = self.show_using_server
     
-    @param.depends('update_map', watch=True)
+    @param.depends('update_map', watch=True) #watches for user pressing update map button and executes following lines
     def _update_map(self):
+        '''
+        Refreshes map object when user intiates via button on the GUI
+
+        Returns
+        -------
+        None.
+
+        '''
         self.map = self.get_map(self.duty_location)
         self.duty_location = self.duty_grid
         self.duty_zip_code = self.zip_df[self.zip_df.contains(Point(self.duty_location[1],self.duty_location[0]))].Zip_Code.iloc[0]
@@ -345,12 +575,15 @@ class HousingFoliumMap(param.Parameterized):
         self.create_choro(self.map, self.school_df, 'School Rating')
         self.create_choro(self.map, self.recreation_df, 'Brewery Count')
         fm.LayerControl().add_to(self.map)
-        self.html_pane.object = self.map
+        self.html_pane.object = self.map #crux step to refresh the map with new inputs
         
     def show_using_server(self):
-        self.view.show().servable()
+        '''
+        Supporing function for use in jupyter notebook to launch server version of the app
+        '''
+        self.view.show()
         
-app = HousingFoliumMap()
+app = MapGenerator()
 dashboard = pn.Tabs(('Inputs',pn.Column(
                                 pn.Row(pn.Column(
                                             app.param.duty_grid,
@@ -369,7 +602,7 @@ dashboard = pn.Tabs(('Inputs',pn.Column(
                                             app.param.recreation
                                 )),
                                 app.param.update_map,
-                                #self.param.show
+                                #self.param.show #button to launch server version in jupyter notebook
                             )),
                     ('Map', app.html_pane))
 dashboard.show()
