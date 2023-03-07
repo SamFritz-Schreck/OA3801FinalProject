@@ -19,8 +19,8 @@ import panel as pn
 import re
 
 class HousingFoliumMap(param.Parameterized):
-    def get_map(self,lat=38.87194866197945, long=-77.05625617335261, zoom_start=10):
-        return fm.Map(location=[lat,long],zoom_start=zoom_start)
+    def get_map(self,grid=(38.87194866197945, -77.05625617335261), zoom_start=10):
+        return fm.Map(location=grid,zoom_start=zoom_start)
     #map1 = get_map()
     #pn.panel(map1, height=400)
 
@@ -120,7 +120,6 @@ class HousingFoliumMap(param.Parameterized):
         crime_df_merge = crime_df_merge.fillna(0) #filling Nan with 0's
         #setting cities without reported crime to the average of the population reported by FBI
         crime_df_merge.loc[crime_df_merge['Crime Index']==0, ['Crime Index']] = 4.46 
-        crime_df_merge['Crime Index'] *= -1
         crime_df_merge.to_crs(4326) #set coords to WGS84
 
         #build school rating
@@ -230,7 +229,8 @@ class HousingFoliumMap(param.Parameterized):
         score_df['Walkability'] = walk_df['Walkability']
         score_df['School Rating'].fillna(5,inplace = True)
         score_df['Brewery Count'].fillna(0,inplace = True)
-        score_df['Overall Score'] = (crime*score_df['Crime Index']/4.46 
+        score_df['Overall Score'] = (-crime*score_df['Crime Index']/4.46
+                                     -self.distance*score_df['Distance']/.1
                                     + walk*score_df['Walkability']/10
                                     + schools*score_df['School Rating']/5
                                     + affordability*score_df['Rent Affordability']
@@ -258,8 +258,8 @@ class HousingFoliumMap(param.Parameterized):
             )
             fm.Marker((point.y,point.x), 
                      icon=number_icon,
-                     popup = f'''Location: {(point.y,point.x)}
-                     <br>Zip Code: {location.Zip_Code}
+                     popup = f'''Zip Code: {location.Zip_Code}
+                     <br>Distance(nm) from duty location: {round(location['Distance'],2)*60}
                      <br>Overall Score: {round(location['Overall Score'],3)}
                      <br>Affordability (in % by BAH): {round(location['Rent Affordability'],2)*100}
                      <br>Walkability: {location['Walkability']}
@@ -293,8 +293,7 @@ class HousingFoliumMap(param.Parameterized):
                               'O01E': 2, 'O02E': 2, 'O03E': 3,
                               'O01': 2, 'O02': 2,'O03': 2,'O04': 3,'O05': 3,'O06': 3,'O07': 3,'O08': 3,'O09': 3, 'O010': 3}
     #Source: BAH Primer: https://media.defense.gov/2022/Jun/23/2003023204/-1/-1/0/BAH-PRIMER.PDF
-    latitude = param.Number(38.87194866197945, doc='Duty Latitude')
-    longitude = param.Number(-77.05625617335261, doc='Duty Longitude')
+    duty_grid = param.XYCoordinates((38.87194866197945,-77.05625617335261))
     grade = param.Selector(BAH_WD_standards_dict.keys(), default = 'O04')
     dependents = param.Selector(['W', 'WO'], default = 'W')
     walkability = param.Integer(4, bounds=(0,10))
@@ -303,6 +302,7 @@ class HousingFoliumMap(param.Parameterized):
     school_quality = param.Integer(7, bounds=(0,10))
     recreation = param.Integer(5,bounds=(0,10))
     points_count = param.Integer(5, bounds=(1,10))
+    distance = param.Integer(8, bounds=(0,10))
     update_map = param.Action(lambda x: x.param.trigger('update_map'))
     #show = param.Action()
         
@@ -318,22 +318,22 @@ class HousingFoliumMap(param.Parameterized):
                               'O01E': 2, 'O02E': 2, 'O03E': 3,
                               'O01': 2, 'O02': 2,'O03': 2,'O04': 3,'O05': 3,'O06': 3,'O07': 3,'O08': 3,'O09': 3, 'O010': 3}
         
-        self.duty_location = (self.latitude,self.longitude)
+        self.duty_location = self.duty_grid
         
         self.walk_df, self.crime_df, self.school_df, self.recreation_df,self.zip_df, self.BAH_df, self.FMR_df, self.county_FMR_df = self.create_support_df(self.duty_location)
         
         self.base_df = self.walk_df.drop('Walkability', axis=1)
-        self.duty_zip_code = self.zip_df[self.zip_df.contains(Point(self.longitude,self.latitude))].Zip_Code.iloc[0]
-        self.map = self.get_map(self.latitude,self.longitude)
+        self.duty_zip_code = self.zip_df[self.zip_df.contains(Point(self.duty_location[1],self.duty_location[0]))].Zip_Code.iloc[0]
+        self.map = self.get_map(self.duty_location)
         self.html_pane = pn.pane.HTML(sizing_mode="scale_both", min_height=400)    
         self._update_map()
         self.show = self.show_using_server
     
     @param.depends('update_map', watch=True)
     def _update_map(self):
-        self.map = self.get_map(self.latitude,self.longitude)
-        self.duty_location = (self.latitude,self.longitude)
-        self.duty_zip_code = self.zip_df[self.zip_df.contains(Point(self.longitude,self.latitude))].Zip_Code.iloc[0]
+        self.map = self.get_map(self.duty_location)
+        self.duty_location = self.duty_grid
+        self.duty_zip_code = self.zip_df[self.zip_df.contains(Point(self.duty_location[1],self.duty_location[0]))].Zip_Code.iloc[0]
         self.score_df, self.rent_df = self.generate_score(self.affordability, self.crime, self.recreation, self.school_quality, self.walkability, 
                                        self.duty_location, self.grade, self.dependents,
                                        self.base_df, self.walk_df, self.crime_df, self.school_df, self.recreation_df,
@@ -353,8 +353,7 @@ class HousingFoliumMap(param.Parameterized):
 app = HousingFoliumMap()
 dashboard = pn.Tabs(('Inputs',pn.Column(
                                 pn.Row(pn.Column(
-                                            app.param.latitude,
-                                            app.param.longitude,
+                                            app.param.duty_grid,
                                             app.param.grade,
                                             app.param.dependents,
                                             app.param.points_count,
@@ -362,6 +361,7 @@ dashboard = pn.Tabs(('Inputs',pn.Column(
                                             sizing_mode="stretch_width", min_height=400,
                                         ),
                                         pn.Column(
+                                            app.param.distance,
                                             app.param.affordability,
                                             app.param.crime,
                                             app.param.school_quality,
